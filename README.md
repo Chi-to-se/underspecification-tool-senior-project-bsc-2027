@@ -64,3 +64,5 @@ python LIMEV9.py \
   - Compute and show the Underspecification Degree, Lower means low underspecification, higher means high underspecification.
   
 
+# Example Data
+You can try download example data from [HERE](https://drive.google.com/drive/folders/1TUf2LdaMmNP50LnA0a_GZN6mJrFkgEfj?usp=sharing).

@@ -40,6 +40,18 @@ FIG_SIZE = (18,6)
 # ====================
 
 def parse_arg():
+    """
+    Parses command-line arguments using argparse.
+    
+    Returns:
+        argparse.Namespace: Parsed arguments
+            - models: List of model paths
+            - images: List of image paths
+            - labels: List of labels (optional)
+
+    """
+
+
     parser = argparse.ArgumentParser(description="Upload Models and Images")
 
     #Add parser
@@ -49,26 +61,58 @@ def parse_arg():
     return parser.parse_args()
 
 def preprocess_image(img_path, target_size):
+    """
+    Format image into image array.
 
-    # Load Image from Memory
+    Args:
+        - img_path (str): Path to the image
+        - target_size (tuple): Target size of the image as tuple (height, width), e.g., (299, 299)
+    
+    Returns:
+        - img_array (np.ndarray): Formatted image array (Normalize to 0-1)
+    """
+
+    # Load an image directly from a file path
     img = image.load_img(img_path, target_size=target_size)
 
-    # Format image to Array(Nomalize to 0-1)
+    # Format image to Array (Normalize to 0-1)
     img_array = image.img_to_array(img) / 255
 
     return img_array
 
 def num_class_call(model):
-    
+    """
+    Call number of class and is_binary from model.
+
+    Args:
+        - model (tf.keras.Model): Model to get number of class and is_binary
+
+    Returns:
+        - num_classes (int): Number of class
+        - is_binary (bool): Is binary
+    """
+
     # Get last Node of the model
     num_classes = model.output_shape[-1]
 
-    # Check is_binary
+    # Check if model is Binary for automate class labels(Class 0, Class 1) in main code
     is_binary = (num_classes == 1)
 
     return num_classes, is_binary
 
 def get_lime_mask(explanation, top_label, num_features=NUM_FEATURES):
+    """
+    Extract positive and negative super-pixel masks from LIME explanation.
+
+    Args:
+        - explanation (lime_image.ImageExplanation): LIME explanation object
+        - top_label (int): Top label index
+        - num_features (int, optional): Number of features to extract. Defaults to NUM_FEATURES.
+
+    Returns:
+        - pos_mask (np.ndarray): Positive mask
+        - neg_mask (np.ndarray): Negative mask
+    """
 
     # Get Superpixel weights
     local_exp = dict(explanation.local_exp[top_label])
@@ -87,40 +131,71 @@ def get_lime_mask(explanation, top_label, num_features=NUM_FEATURES):
     return pos_mask, neg_mask
 
 def create_overlay_image(img_array, pos_mask, neg_mask):
+    """
+    Create overlay image with green (positive) and red (negative) masks.
 
-    # Grey and Background
+    Args:
+        - img_array (np.ndarray): Image array
+        - pos_mask (np.ndarray): Positive mask
+        - neg_mask (np.ndarray): Negative mask
+
+    Returns:
+        - overlay_image (np.ndarray): Overlay image with green and red masks
+    """
+
+    # Make Grey Background by mean of R,G,B Channel
     grey_image = np.mean(img_array, axis=-1)
-    background = np.stack([grey_image, grey_image, grey_image], axis=-1) * 0.4
+    # Dim background to 40% of original brightness by multiplying by 0.4
+    background = np.stack([grey_image, grey_image, grey_image], axis=-1) * 0.4 
     background_copy = background.copy()
 
     # Postitive(Green) Area
+    # Restore pos_mask are to (0.7)70% brightness + (0.3)30% brightness of green
     background_copy[pos_mask] = img_array[pos_mask] * 0.7
     background_copy[pos_mask, 1] = background_copy[pos_mask, 1] + 0.3
 
     # Negative(Red) Area
+    # Restore neg_mask are to (0.7)70% brightness + (0.3)30% brightness of red
     background_copy[neg_mask] = img_array[neg_mask] * 0.7
     background_copy[neg_mask, 0] = background_copy[neg_mask, 0] + 0.3
 
-    # 0-1 Color
+    # Clip image to 0-1 range
     background_copy = np.clip(background_copy, 0, 1)
 
-    # Boundaries(Border)
+    # Boundaries(Border) of super pixel area
     overlay_image = mark_boundaries(
         background_copy, 
         pos_mask.astype(int), 
-        color=(0, 1, 0),
+        color=(0, 1, 0), # (Red ,Green, Blue)
         mode='inner'
         )
     overlay_image = mark_boundaries(
         overlay_image,
         neg_mask.astype(int),
-        color=(1, 0, 0),
+        color=(1, 0, 0), # (Red ,Green, Blue)
         mode='inner'
     )
 
     return overlay_image
 
 def plot_and_save_comparison(model_name, image_name, explanation, top_label, predicted_label, predicted_probs, overlay_img, ollama_text=None, save_dir=SAVE_DIR):
+    """
+    Plot and save comparison of LIME explanations.
+
+    Args:
+        - model_name (str): Name of the model
+        - image_name (str): Name of the image
+        - explanation (lime_image.ImageExplanation): LIME explanation object
+        - top_label (int): Top label index
+        - predicted_label (str): Predicted label
+        - predicted_probs (float): Predicted probabilities
+        - overlay_img (np.ndarray): Overlay image
+        - ollama_text (str): Text from Ollama
+        - save_dir (str): Directory to save the image
+
+    Returns:
+        - save_path (str): Saved file path
+    """
     temp, _ = explanation.get_image_and_mask(
             top_label,
             positive_only=True,
@@ -196,6 +271,14 @@ def plot_and_save_comparison(model_name, image_name, explanation, top_label, pre
     
 
 def combine_results_to_grid(saved_image_paths, output_path=COMBNED_GRID_PATH):
+    """
+    Combine multiple LIME explanation images into a grid.
+
+    Args:
+        - saved_image_paths (list): List of paths to the LIME explanation images
+        - output_path (str): Path to save the combined image
+
+    """
 
     #
     num_images = len(saved_image_paths)
@@ -233,6 +316,18 @@ def combine_results_to_grid(saved_image_paths, output_path=COMBNED_GRID_PATH):
     plt.show()
 
 def compute_cosine_distance(mask1,mask2,image_name):
+    """
+    Compute the Underspecification Degree(Cosine Distance) between two masks.
+
+    Args:
+        - mask1 (np.ndarray): First mask
+        - mask2 (np.ndarray): Second mask
+        - image_name (str): Name of the image
+
+    Returns:
+        - cosine_dis (float): Cosine distance
+        - message (str): Message
+    """
 
     # Flatten
     mask1 = mask1.flatten().astype("float32")
@@ -243,7 +338,8 @@ def compute_cosine_distance(mask1,mask2,image_name):
     magnitude_a = np.linalg.norm(mask1)
     magnitude_b = np.linalg.norm(mask2)
     
-    if magnitude_a == 0 or magnitude_b == 0: return 1.0
+    if magnitude_a == 0 or magnitude_b == 0: 
+        raise ValueError("Vectors must have non-zero magnitude")
 
     cosine_sim = dot_product / (magnitude_a * magnitude_b)
 

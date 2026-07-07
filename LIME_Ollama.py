@@ -29,8 +29,10 @@ def call_llm_for_response(image_path: str, session_id: str = None) -> str:
         import time
         session_id = f"lime_{int(time.time() * 1000)}"
 
+    # Initialize a LLM Model
     llm = ChatOllama(model=MODEL, temperature=TEMPERATURE)
 
+    # Set up memory for multi-turn conversation
     mem = {}
     def get_session_history(sid: str):
         if sid not in mem:
